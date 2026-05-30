@@ -1,46 +1,3 @@
-# import os
-# from dotenv import load_dotenv
-# from google import genai
-# import telebot
-
-# load_dotenv()
-
-# bot = telebot.TeleBot(token=os.environ.get("BOT_TOKEN"))
-# client = genai.Client(api_key=os.environ.get("API_KEY"))
-# history = []
-
-# @bot.message_handler(commands=['start'])
-# def greet(message):
-#     bot.send_message(message.chat.id,"Hello Sir, How can i help you today")
-
-# @bot.message_handler(func = lambda msg: msg == "cls")
-# def end(message):
-#     history.clear()
-#     bot.send_message(message.chat.id,"Chat Ended")
-
-# @bot.message_handler(func = lambda mes: True)
-# def reply(message):
-#     history.append({
-#         "role": "user",
-#         "parts": [{"text": message.text}]
-#     })
-
-#     bot.send_chat_action(message.chat.id,"typing")
-
-#     response = client.models.generate_content(
-#         model="gemini-2.5-flash-lite",
-#         contents=history
-#     )
-
-#     history.append({
-#         "role": "model",
-#         "parts": [{"text": response.text}]
-#     })
-
-#     bot.reply_to(message, response.text)
-
-
-# bot.infinity_polling()
 import os
 import json
 import time
@@ -54,6 +11,7 @@ load_dotenv()
 
 GEMINI_API_KEY = os.environ.get("API_KEY")
 TELEGRAM_TOKEN = os.environ.get("BOT_TOKEN")
+ALLOWED_ID = os.environ.get("ALLOWED_ID")
 TODO_FILE = "todos.json"
 
 gemini = genai.Client(api_key=GEMINI_API_KEY)
@@ -225,45 +183,59 @@ def execute_action(action: dict) -> str:
     return "❓ Something went wrong. Please try again."
 
 
+def is_authorised(id):
+    return int(ALLOWED_ID) == id
+
 # ── Telegram handlers ──────────────────────────────────────────────────────────
 
 @bot.message_handler(commands=["start"])
 def handle_start(message):
-    bot.reply_to(message, (
-        "👋 Hey! I'm your *AI To-Do assistant* powered by Gemini.\n\n"
-        "Just talk to me naturally:\n"
-        "• _add buy groceries_\n"
-        "• _mark task 1 as done_\n"
-        "• _delete task 2_\n"
-        "• _show my list_\n"
-        "• _clear completed tasks_\n\n"
-        "No need for special commands — just type!"
-    ), parse_mode="Markdown")
+    if is_authorised(message.from_user.id):
+        bot.reply_to(message, (
+            "👋 Hey! I'm your *AI To-Do assistant* powered by Gemini.\n\n"
+            "Just talk to me naturally:\n"
+            "• _add buy groceries_\n"
+            "• _mark task 1 as done_\n"
+            "• _delete task 2_\n"
+            "• _show my list_\n"
+            "• _clear completed tasks_\n\n"
+            "No need for special commands — just type!"
+        ), parse_mode="Markdown")
+    else: 
+        bot.reply_to(message, "Unauthorised")
 
 @bot.message_handler(commands=["list"])
 def handle_list(message):
-    todos = load_todos()
-    bot.reply_to(message, format_todos(todos), parse_mode="Markdown")
+    if is_authorised(message.from_user.id):
+        todos = load_todos()
+        bot.reply_to(message, format_todos(todos), parse_mode="Markdown")
+    else: 
+        bot.reply_to(message, "Unauthorised")
 
 @bot.message_handler(commands=["clear"])
 def handle_clear(message):
-    todos = load_todos()
-    todos = [t for t in todos if not t["done"]]
-    save_todos(todos)
-    bot.reply_to(message, "🧹 Cleared all completed tasks.\n\n" + format_todos(todos), parse_mode="Markdown")
+    if is_authorised(message.from_user.id):
+        todos = load_todos()
+        todos = [t for t in todos if not t["done"]]
+        save_todos(todos)
+        bot.reply_to(message, "🧹 Cleared all completed tasks.\n\n" + format_todos(todos), parse_mode="Markdown")
+    else: 
+        bot.reply_to(message, "Unauthorised")
 
 @bot.message_handler(func=lambda m: True)
 def handle_message(message):
-    user_text = message.text
-    todos = load_todos()
+    if is_authorised(message.from_user.id):
+        user_text = message.text
+        todos = load_todos()
 
-    bot.send_chat_action(message.chat.id, "typing")
+        bot.send_chat_action(message.chat.id, "typing")
 
-    action = ask_gemini(user_text, todos)
-    reply  = execute_action(action)
+        action = ask_gemini(user_text, todos)
+        reply  = execute_action(action)
 
-    bot.reply_to(message, reply, parse_mode="Markdown")
-
+        bot.reply_to(message, reply, parse_mode="Markdown")
+    else: 
+        bot.reply_to(message, f"Unauthorised")
 
 # ── Run ────────────────────────────────────────────────────────────────────────
 
